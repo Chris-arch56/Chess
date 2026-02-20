@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>React Chess (CDN)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+</head>
+
+<body class="bg-gray-900 text-white flex justify-center p-6">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+
+function ChessApp() {
+  const [game, setGame] = useState(new Chess());
+  const [selected, setSelected] = useState(null);
+  const [moves, setMoves] = useState([]);
+
+
+  // stores move history in chess notation
+  const [history, setHistory] = useState([]);
+
+
+  // used to highlight the previous move on the board
+  const [lastMove, setLastMove] = useState(null);
+
+
+  // lets the user choose which piece a pawn promotes to
+  const [promotion, setPromotion] = useState("q");
+
+
+  // flips the board so black can be viewed from the bottom
+  const [flipped, setFlipped] = useState(false);
+
+
+  // simple 30-second countdown timer
+  const [time, setTime] = useState(30);
+  const [running, setRunning] = useState(false);
+
+
+  // keeps track of captured pieces for each side
+  const [whiteCaps, setWhiteCaps] = useState([]);
+  const [blackCaps, setBlackCaps] = useState([]);
+
+  const pieces = {
+    p:'♟', r:'♜', n:'♞', b:'♝', q:'♛', k:'♚',
+    P:'♙', R:'♖', N:'♘', B:'♗', Q:'♕', K:'♔'
+  };
+
+  // countdown logic for the timer
+  useEffect(() => {
+    if (!running || time === 0) return;
+    const id = setInterval(() => setTime(t => t - 1), 1000);
+    return () => clearInterval(id);
+  }, [running, time]);
+
+
+
+  function label(i,j){ return String.fromCharCode(97+j)+(8-i); }
+  function clickSquare(sq) {
+    if (selected) {
+      const move = game.move({ from: selected, to: sq, promotion });
+      if (move) {
+
+        // records captured pieces so they can be displayed
+        if (move.captured) {
+          move.color === 'w'
+            ? setWhiteCaps(w => [...w, pieces[move.captured]])
+            : setBlackCaps(b => [...b, pieces[move.captured.toUpperCase()]]);
+
+        }
+
+        // saves the last move so it can be highlighted
+        setLastMove({from:move.from,to:move.to});
+
+        // adds the move to the move history list
+        setHistory(h => [...h, move.san]);
+        setGame(new Chess(game.fen()));
+      }
+
+      setSelected(null);
+      setMoves([]);
+      return;
+    }
+
+    const p = game.get(sq);
+    if (p && p.color === game.turn()) {
+      setSelected(sq);
+      setMoves(game.moves({ square:sq, verbose:true }).map(m=>m.to));
+    }
+  }
+
+
+  // allows undoing the previous move
+  function undo() {
+    const m = game.undo();
+    if (m) {
+      setGame(new Chess(game.fen()));
+      setHistory(h => h.slice(0,-1));
+    }
+  }
+  const board = flipped
+    ? [...game.board()].reverse().map(r=>[...r].reverse())
+    : game.board();
+
+  return (
+    <div className="max-w-5xl w-full">
+      <h1 className="text-3xl font-bold text-yellow-400 text-center mb-2">React Chess</h1>
+
+      {/* displays current turn, check, or game over */}
+      <p className="text-center mb-3">
+        {game.in_checkmate() ? "Checkmate!" :
+         game.in_draw() ? "Draw!" :
+         game.in_check() ? "Check!" :
+         game.turn()==='w' ? "White's Turn" : "Black's Turn"}
+      </p>
+
+      <div className="flex gap-4 mb-4 justify-center">
+        <button onClick={undo} className="bg-slate-600 px-4 py-2 rounded">Undo</button>
+
+        {/* flips the board orientation */}
+        <button onClick={()=>setFlipped(f=>!f)} className="bg-indigo-600 px-4 py-2 rounded">Flip</button>
+
+        {/* starts the 30-second timer */}
+        <button onClick={()=>{setTime(30);setRunning(true)}} className="bg-emerald-600 px-4 py-2 rounded">Timer</button>
+
+      </div>
+
+      <div className="grid grid-cols-8 border-4 border-gray-700 mx-auto w-fit">
+        {board.map((row,i)=>row.map((sq,j)=>{
+          const real = flipped ? label(7-i,7-j) : label(i,j);
+          const dark = (i+j)%2;
+          const sel = selected===real;
+          const opt = moves.includes(real);
+          const last = lastMove && (lastMove.from===real || lastMove.to===real);
+
+
+          return (
+            <div key={real}
+              onClick={()=>clickSquare(real)}
+              className={`w-14 h-14 flex items-center justify-center text-3xl cursor-pointer
+                ${dark?'bg-slate-700':'bg-slate-400'}
+                ${sel?'ring-4 ring-yellow-300':''}
+                ${last?'outline outline-amber-400':''}`}>
+              {opt && <div className="absolute w-3 h-3 bg-black/30 rounded-full"></div>}
+              {sq && pieces[sq.color==='w'?sq.type.toUpperCase():sq.type]}
+            </div>
+          );
+        }))}
+
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-4">
+        {/* shows all moves played so far */}
+        <div>
+          <h2 className="font-bold text-yellow-400">Moves</h2>
+          {history.map((m,i)=><div key={i}>{i+1}. {m}</div>)}
+        </div>
+
+        {/* timer and captured pieces display */}
+        <div>
+
+          <h2 className="font-bold text-yellow-400">Timer</h2>
+          <p>{time}s</p>
+          <h2 className="font-bold text-yellow-400 mt-3">Captured</h2>
+          <p>White: {whiteCaps.join(" ")}</p>
+          <p>Black: {blackCaps.join(" ")}</p>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<ChessApp />);
+</script>
+</body>
+</html>
